@@ -8,10 +8,17 @@
 # P. Datta <pdbforce@jlab.org> CREATED 11-09-2022                           #
 # ---------                                                                 #
 # ** Do not tamper with this sticker! Log any updates to the script above.  #
+# ---------                                                                 #
+# S. Seeds <sseeds@jlab.org> Added version control machinery                #
 # ------------------------------------------------------------------------- #
 
 # Setting necessary environments via setenv.sh
 source setenv.sh
+
+# Set path to version information
+USER_VERSION_PATH="$SCRIPT_DIR/misc/version_control/user_env_version.conf"
+# Check to verify information is at location and update as necessary
+$SCRIPT_DIR/misc/version_control/check_and_update_versions.sh
 
 # List of arguments
 preinit=$1      # G4SBS preinit macro w/o file extention (Must be located at $G4SBS/scripts)
@@ -159,6 +166,39 @@ do
 	$digireplayscript
     fi
 done
+
+# add a copy of the version control to outputdir for traceability
+# Define the path for the version file within the output directory
+VERSION_FILE="$outdirpath/${preinit}_version.txt"
+
+# Function to append version information to the file
+append_version_info() {
+    # Add the date and time of creation to the version file
+    echo "# Version file created on $(date '+%Y-%m-%d %H:%M:%S')" >> "$VERSION_FILE"
+
+    # Add the configured run range to the version file
+    ljobid=$((fjobid + njobs))
+    echo "# This run range from $fjobid to $ljobid" >> "$VERSION_FILE"
+
+    # Append the contents of last_update.conf to the version file
+    echo "" >> "$VERSION_FILE" # Add an empty line for readability
+    cat "$USER_VERSION_PATH" >> "$VERSION_FILE"
+    echo "" >> "$VERSION_FILE" # Add an empty line for readability
+}
+
+# Check if the VERSION_FILE already exists
+if [ -f "$VERSION_FILE" ]; then
+    # VERSION_FILE exists, append new version information
+    echo "Appending version information to existing $VERSION_FILE"
+    append_version_info
+else
+    # VERSION_FILE does not exist, create it and add version information
+    echo "Creating new $VERSION_FILE and adding version information"
+    touch "$VERSION_FILE" # Ensure the file exists before appending
+    append_version_info
+fi
+
+echo "Version information has been saved to $VERSION_FILE"
 
 # run the workflow and then print status
 if [[ $run_on_ifarm -ne 1 ]]; then

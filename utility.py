@@ -10,6 +10,8 @@
 import re
 import sys
 
+error_code = -9999
+
 def read_file(infile):
     '''Reads a file and returns a list'''
     lines = []
@@ -25,13 +27,15 @@ def write_file(list_of_data, outfile):
 def get_job_id(infile):
     '''Returns job id from a given input file.
        Naming convention: *_job_<jobid>.<extention>'''
+    # handing non-standard file name
+    if "_job_" not in infile: return error_code 
     regex = r"_job_(\d+)\.\w+"
     return re.findall(regex, infile)[0]
 
 def grab_simc_param_value(infile, param):
     '''Grabs the value of a chosen parameter from SIMC infile'''
     lines = read_file(infile)
-    value = -9999
+    value = error_code
     for line in lines:
         if param in line:
             temp = line.split(";", 1)[0]
@@ -46,7 +50,7 @@ def strip_path(filewpath):
 def read_simc_histfile(histfile):
     '''Reads SIMC hist file and returns a dictionary'''
     result = {}
-    regex = r"\s+([A-Za-z\s{0,1}\(\)/]+)\s+=\s+([0-9E?\+?\.]+)"
+    regex = r"\s+([A-Za-z\s{0,1}\(\)/_\.>]+)\s+=\s+([0-9E?\+?\.-]+)"
     lines = read_file(histfile)
     for line in lines:
         if 'GeV^2' not in line:
@@ -56,13 +60,13 @@ def read_simc_histfile(histfile):
 
 def grab_simc_norm_factors(histfile, is_title):
     '''Grabs important normalization factors from SIMC .hist file'''
-    titles = ['jobid', 'Nthrown', 'Ntried', 'genvol(MeV*sr^2)', 'luminosity(ub^-1)', 'ebeam(GeV)', 'charge(mC)', 'RndmSeed']
-    params = ['Ngen (request)', 'Ntried', 'genvol', 'luminosity', 'Ebeam', 'charge', 'Random Seed'] 
+    titles = ['jobid', 'Nthrown', 'Ntried', 'genvol(MeV*sr^2)', 'luminosity(ub^-1)', 'ebeam(GeV)', 'charge(mC)', 'RndmSeed', 'UsingRS', 'MaxWtRS(ub/MeV/sr2)', 'wtGTmaxwt', 'ObsMaxWtRS']
+    params = ['Ngen (request)', 'Ntried', 'genvol', 'luminosity', 'Ebeam', 'charge', 'Random Seed', 'Using RS', 'Chosen max wt (max_weight_RS)', 'No. events with wt>max_wt_RS', 'Observed max wt'] 
     if int(is_title) != 1:
         values = []
         values.append(get_job_id(histfile))
         flags = read_simc_histfile(histfile)
-        for item in params: values.append(flags[item])
+        for item in params: values.append(flags.get(item,0))
         return ','.join(str(e) for e in values)
     else: 
         return ','.join(str(e) for e in titles)

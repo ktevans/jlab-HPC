@@ -8,30 +8,35 @@
 # P. Datta <pdbforce@jlab.org> CREATED 04-19-2023                           #
 # ---------                                                                 #
 # ** Do not tamper with this sticker! Log any updates to the script below.  #
+# ---------                                                                 #
+# S. Seeds <sseeds@jlab.org> Added version control machinery                #
 # ------------------------------------------------------------------------- #
 
-# ------------------- Notes and Instructions (READ BEFORE EXECUTION) ---------------- #
-# ----------------------------------------------------------------------------------- #
-# 1. This script takes 5 arguments:                                                   #
-#    a. SIMC infile w/o file extention. Must be located at $SIMC/infiles directory.   #
+# ------------------- Notes and Instructions (READ BEFORE EXECUTION) -------------------- #
+# --------------------------------------------------------------------------------------- #
+# 1. This script takes 5 arguments:                                                       #
+#    a. SIMC infile w/o file extention. Must be located at $SIMC/infiles directory.       #
 #    b. SBS configuration (Valid options: GMN4,GMN7,GMN11,GMN14,GMN8,GMN9,GEN2,GEN3,GEN4) #
-#    c. First job id.                                                                 #
-#    d. Total no. of jobs to submit.                                                  #
-#    e. Flag to force all jobs to run on ifarm. (1=>YES) Very useful for debugging.   #
-# 2. Total no. of events per g4sbs job gets determined by SIMC infile ("ngen" flag)   #
-# 3. Be sure to edit "workflowname" variable appropriately before executing script.   #
-# 4. Be sure to edit "outdirpath" variable appropriately before executing script.     #
-# 6. SIMC jobs get executed on ifarm (not on batch farm) and all the output files get #
-#    moved to $outdirpath/simcoutdir directory.                                       #
-# 7. After all the SIMC jobs are finished a summary CSV file, $infile_summary.csv get # 
-#    created and kept in the directory mentioned above which contain the important    #
-#    normalization factors for all jobs.                                              #
-# 8. List of interdependencies: utility.py, run-g4sbs-w-simc.sh, run-sbsdig.sh,       #
-#    run-digi-replay.sh | All these scripts must be present in the $SCRIPT_DIR        #
-# ----------------------------------------------------------------------------------- #
+#    c. First job id.                                                                     #
+#    d. Total no. of jobs to submit.                                                      #
+#    e. Flag to force all jobs to run on ifarm. (1=>YES) Very useful for debugging.       #
+# 2. Total no. of events applies to both SIMC and g4sbs for consistency.                  #
+# 3. Be sure to edit "workflowname" variable appropriately before executing script.       #
+# 4. Be sure to edit "outdirpath" variable appropriately before executing script.         #
+# 5. After all the SIMC jobs are finished a summary CSV file, $infile_summary.csv get     # 
+#    created and kept in $outdirpath/simcoutdir, which contain the important              #
+#    normalization factors for all jobs.                                                  #
+# 6. List of interdependencies: utility.py, run-g4sbs-w-simc.sh, run-sbsdig.sh, run-      #
+#    simc.sh, run-digi-replay.sh | All these scripts must be present in the $SCRIPT_DIR   #
+# --------------------------------------------------------------------------------------- #
 
 # Setting necessary environments via setenv.sh
 source setenv.sh
+
+# Set path to version information
+USER_VERSION_PATH="$SCRIPT_DIR/misc/version_control/user_env_version.conf"
+# Check to verify information is at location and update as necessary
+$SCRIPT_DIR/misc/version_control/check_and_update_versions.sh
 
 # ------ Variables needed to be set properly for successful execution ------ #
 # -------------------------------------------------------------------------- #
@@ -39,11 +44,11 @@ source setenv.sh
 # G4SBS macro should have same name as SIMC input file just with different 
 # file extention and should be located at $G4SBS/scripts.
 infile=$1
-sbsconfig=$2    # SBS configuration (Valid options: 4,7,11,14,8,9)
-# No. of jobs to submit (NOTE: # events to generate per job get set by SIMC infile ("ngen" flag))
-fjobid=$3       # first job id
-njobs=$4        # total no. of jobs to submit 
-run_on_ifarm=$5 # 1=>Yes (If true, runs all jobs on ifarm)
+sbsconfig=$2    # SBS configuration (Valid options: 4,7,11,14,8,9
+nevents=$3      # No. of SIMC (and g4sbs) events to generate
+fjobid=$4       # first job id
+njobs=$5        # total no. of jobs to submit 
+run_on_ifarm=$6 # 1=>Yes (If true, runs all jobs on ifarm)
 # ----/\---- Above variables are taken as arguments to this script ---/\---- # 
 # Workflow name
 workflowname=
@@ -51,6 +56,26 @@ workflowname=
 # Working on a single directory is convenient & safe for the above mentioned
 # four processes to run coherently without any error.
 outdirpath=
+# -------------------------------------------------------------------------- #
+
+# ------ Variables to allocate time and memory for each type of jobs  ------ #
+# -------------------------------------------------------------------------- #
+# SIMC jobs
+SIMCJOBram='100MB'
+SIMCJOBdisk='250MB'
+SIMCJOBtime='6h'
+# g4sbs jobs
+G4SBSJOBram='1200MB'
+G4SBSJOBdisk='1GB'
+G4SBSJOBtime='24h'
+# sbsdig jobs
+SBSDIGJOBram='1200MB'
+SBSDIGJOBdisk='100MB'
+SBSDIGJOBtime='6h'
+# replay jobs
+REPLAYJOBram='1200MB'
+REPLAYJOBdisk='1GB'
+REPLAYJOBtime='6h'
 # -------------------------------------------------------------------------- #
 
 # Sanity check 0: Checking the environments
@@ -71,14 +96,15 @@ elif [[ ! -d $SBS_REPLAY ]]; then
 fi
 
 # Sanity check 1: Validating the number of arguments provided
-if [[ "$#" -ne 5 ]]; then
+if [[ "$#" -ne 6 ]]; then
     echo -e " \n --!!--\n ERROR! Illegal number of arguments!! \n ------"
-    echo -e " This script takes 5 arguments: <infile> <sbsconfig> <fjobid> <njobs> <run_on_ifarm>"
+    echo -e " This script takes 6 arguments: <infile> <sbsconfig> <fjobid> <njobs> <run_on_ifarm>"
     echo -e "  1. <infile>       : SIMC infile w/o file extention. Must be located at SIMC/infiles directory."
     echo -e "  2. <sbsconfig>    : SBS configuration (Valid options: GMN4,GMN7,GMN11,GMN14,GMN8,GMN9,GEN2,GEN3,GEN4)."  
-    echo -e "  3. <fjobid>       : First job id."  
-    echo -e "  4. <njobs>        : Total no. of jobs to submit."
-    echo -e "  5. <run_on_ifarm> : 1=>Yes (If true, runs all jobs on ifarm)"
+    echo -e "  3. <nevents>      : No. of SIMC (and g4sbs) events to generate per job."  
+    echo -e "  4. <fjobid>       : First job id."  
+    echo -e "  5. <njobs>        : Total no. of jobs to submit."
+    echo -e "  6. <run_on_ifarm> : 1=>Yes (If true, runs all jobs on ifarm)"
     echo -e " ------"
     echo -e ' ** Make sure "workflowname" & "outdirpath" variables are set properly in the script.'
     echo -e ' ** Read the "Notes and Instructions" block at the top of script for more information.\n'
@@ -135,23 +161,33 @@ if [[ ! -f $g4sbsmacro ]]; then
     exit;
 fi
 
+# Sanity check 5: Check SIMC input file character count
+charcount=$(echo -n $infile | wc -c) 
+if [[ $charcount -gt 100 ]]; then
+    echo -e "\n!!!!!!!! ERROR !!!!!!!!!"
+    echo -e "SIMC infile name must have < 100 characters.."
+    echo -e "Given infile, $infile, has $charcount characters!"
+    echo -e "Aborting.."
+    exit;
+fi
+
 # Creating a sub-directory (simcout) to keep all the SIMC outputs in one place
 export simcoutdir=$outdirpath'/simcout'
 if [[ ! -d $simcoutdir ]]; then
     mkdir $simcoutdir
 fi
 
-# Creating a CSV file to write a summary table of normalization factors by job
-simcnormtable=$simcoutdir'/'$infile'_summary.csv'
+# # Creating a CSV file to write a summary table of normalization factors by job
+# simcnormtable=$simcoutdir'/'$infile'_summary.csv'
 
 # Reading SIMC infile ("ngen" flag) to determine no. of g4sbs events to generate
-nevents=$(python3 $SCRIPT_DIR'/'utility.py 'grab_simc_param_value' $simcmacro 'ngen')
+#nevents=$(python3 $SCRIPT_DIR'/'utility.py 'grab_simc_param_value' $simcmacro 'ngen')
 if [[ $nevents -lt 0 ]]; then
     echo -e "\n!!!!!!!! ERROR !!!!!!!!!"
     echo -e "Illegal no. of events! nevents = $nevents | Aborting!\n"
     exit;
 else
-    echo -e "\n ** $nevents g4sbs events will be generated per job!"
+    echo -e "\n ** $nevents SIMC (and g4sbs) events will be generated per job!"
 fi
 
 # Creating the workflow
@@ -177,42 +213,28 @@ fi
 # Loop to create jobs
 for ((i=$fjobid; i<$((fjobid+njobs)); i++))
 do
-    # lets generate SIMC events first
-    echo -e 'Generating SIMC events for job_'$i'.. [Will take a few seconds]'
-    pushd $SIMC >/dev/null
-    ./run_simc_tree $infile
-    mv 'worksim/'$infile'.root' $simcoutdir'/'$infile'_job_'$i'.root' 
-    mv 'outfiles/'$infile'_start_random_state.dat' $simcoutdir'/'$infile'_start_random_state_job_'$i'.dat'
-    mv 'outfiles/'$infile'.geni' $simcoutdir'/'$infile'_job_'$i'.geni'
-    mv 'outfiles/'$infile'.gen' $simcoutdir'/'$infile'_job_'$i'.gen'
-    mv 'outfiles/'$infile'.hist' $simcoutdir'/'$infile'_job_'$i'.hist'
-    mv 'runout/'$infile'.out' $simcoutdir'/'$infile'_job_'$i'.out'
+    # submitting SIMC jobs
+    simcjobname=$infile'_simc_job_'$i
+    randomseed=$(od -An -N3 -i /dev/urandom)
+    
+    simcscript=$SCRIPT_DIR'/run-simc.sh'' '$infile' '$nevents' '$randomseed' '$i' '$simcoutdir' '$run_on_ifarm' '$SIMC' '$SCRIPT_DIR' '$ANAVER' '$useJLABENV' '$JLABENV
+
+    if [[ $run_on_ifarm -ne 1 ]]; then
+	swif2 add-job -workflow $workflowname -partition production -name $simcjobname -cores 1 -disk $SIMCJOBdisk -ram $SIMCJOBram -time $SIMCJOBtime $simcscript
+    else
+	$simcscript
+    fi
     simcoutfile=$simcoutdir'/'$infile'_job_'$i'.root'
-    popd >/dev/null
-
-    # Abort if SIMC job wasn't successfull
-    if [[ ! -f $simcoutfile ]]; then
-	echo -e "\n!!!!!!!! ERROR !!!!!!!!!"
-	echo -e "SIMC event generation failed! job_$i"
-	exit;
-    fi
-    echo -e "\nSIMC event generation successful! job_$i\n"
-
-    # time to write summary table with normalization factors
-    if [[ ($i == 0) || (! -f $simcnormtable) ]]; then
-    	python3 $SCRIPT_DIR'/'utility.py 'grab_simc_norm_factors' 'None' '1' > $simcnormtable
-    fi
-    python3 $SCRIPT_DIR'/'utility.py 'grab_simc_norm_factors' $simcoutdir'/'$infile'_job_'$i'.hist' '0' >> $simcnormtable
 
     # submitting g4sbs jobs using SIMC outfiles
     outfilebase=$infile'_job_'$i
     postscript=$infile'_job_'$i'.mac'
-    g4sbsjobname=$infile'_job_'$i
+    g4sbsjobname=$infile'_g4sbs_job_'$i
 
     g4sbsscript=$SCRIPT_DIR'/run-g4sbs-w-simc.sh'' '$infile' '$postscript' '$nevents' '$outfilebase' '$outdirpath' '$simcoutfile' '$run_on_ifarm' '$G4SBS' '$ANAVER' '$useJLABENV' '$JLABENV
 
     if [[ $run_on_ifarm -ne 1 ]]; then
-	swif2 add-job -workflow $workflowname -partition production -name $g4sbsjobname -cores 1 -disk 5GB -ram 1500MB $g4sbsscript
+	swif2 add-job -workflow $workflowname -antecedent $simcjobname -partition production -name $g4sbsjobname -cores 1 -disk $G4SBSJOBdisk -ram $G4SBSJOBram -time $G4SBSJOBtime $g4sbsscript
     else
 	$g4sbsscript
     fi
@@ -225,7 +247,7 @@ do
     sbsdigscript=$SCRIPT_DIR'/run-sbsdig.sh'' '$txtfile' '$sbsdiginfile' '$gemconfig' '$run_on_ifarm' '$G4SBS' '$LIBSBSDIG' '$ANAVER' '$useJLABENV' '$JLABENV
     
     if [[ $run_on_ifarm -ne 1 ]]; then
-	swif2 add-job -workflow $workflowname -antecedent $g4sbsjobname -partition production -name $sbsdigjobname -cores 1 -disk 5GB -ram 1500MB $sbsdigscript
+	swif2 add-job -workflow $workflowname -antecedent $g4sbsjobname -partition production -name $sbsdigjobname -cores 1 -disk $SBSDIGJOBdisk -ram $SBSDIGJOBram -time $SBSDIGJOBtime $sbsdigscript
     else
 	$sbsdigscript
     fi
@@ -237,14 +259,47 @@ do
     digireplayscript=$SCRIPT_DIR'/run-digi-replay.sh'' '$digireplayinfile' '$sbsconfig' '-1' '$outdirpath' '$run_on_ifarm' '$ANALYZER' '$SBSOFFLINE' '$SBS_REPLAY' '$ANAVER' '$useJLABENV' '$JLABENV
     
     if [[ $run_on_ifarm -ne 1 ]]; then
-	swif2 add-job -workflow $workflowname -antecedent $sbsdigjobname -partition production -name $digireplayjobname -cores 1 -disk 5GB -ram 1500MB $digireplayscript
+	swif2 add-job -workflow $workflowname -antecedent $sbsdigjobname -partition production -name $digireplayjobname -cores 1 -disk $REPLAYJOBdisk -ram $REPLAYJOBram -time $REPLAYJOBtime $digireplayscript
     else
 	$digireplayscript
     fi
 done
 
-# keep a copy of SIMC job summary file in the $outdirpath as well
-cp $simcnormtable $outdirpath
+# # keep a copy of SIMC job summary file in the $outdirpath as well
+# cp $simcnormtable $outdirpath
+
+# add a copy of the version control to simcout for traceability
+# Define the path for the version file within the output directory
+VERSION_FILE="$simcoutdir/${infile}_version.txt"
+
+# Function to append version information to the file
+append_version_info() {
+    # Add the date and time of creation to the version file
+    echo "# Version file created on $(date '+%Y-%m-%d %H:%M:%S')" >> "$VERSION_FILE"
+
+    # Add the configured run range to the version file
+    ljobid=$((fjobid + njobs))
+    echo "# This run range from $fjobid to $ljobid" >> "$VERSION_FILE"
+
+    # Append the contents of last_update.conf to the version file
+    echo "" >> "$VERSION_FILE" # Add an empty line for readability
+    cat "$USER_VERSION_PATH" >> "$VERSION_FILE"
+    echo "" >> "$VERSION_FILE" # Add an empty line for readability
+}
+
+# Check if the VERSION_FILE already exists
+if [ -f "$VERSION_FILE" ]; then
+    # VERSION_FILE exists, append new version information
+    echo "Appending version information to existing $VERSION_FILE"
+    append_version_info
+else
+    # VERSION_FILE does not exist, create it and add version information
+    echo "Creating new $VERSION_FILE and adding version information"
+    touch "$VERSION_FILE" # Ensure the file exists before appending
+    append_version_info
+fi
+
+echo "Version information has been saved to $VERSION_FILE"
 
 # run the workflow and then print status
 if [[ $run_on_ifarm -ne 1 ]]; then
@@ -252,3 +307,4 @@ if [[ $run_on_ifarm -ne 1 ]]; then
     echo -e "\n Getting workflow status.. [may take a few minutes!] \n"
     swif2 status $workflowname
 fi
+

@@ -81,6 +81,10 @@ then
     analyzer -b -q 'replay_gen_mc.C+("'$inputfile'",'$config','$maxevents')'    
 fi
 
+if [ $experiment == 'GEP' ] #GEP replay
+then
+    analyzer -b -q 'replay_gep_mc.C+("'$inputfile'",'$config','$maxevents')'    
+fi
 
 # move output files
 mv $OUT_DIR'/replayed_'$inputfile'.root' $DATA_DIR

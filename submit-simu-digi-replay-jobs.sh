@@ -34,7 +34,7 @@ workflowname=
 # three processes to run smoothly.
 outdirpath=
 
-# Checking the environments
+# Sanity check 0: Checking the environments
 if [[ ! -d $SCRIPT_DIR ]]; then
     echo -e '\nERROR!! Please set "SCRIPT_DIR" path properly in setenv.sh script!\n'; exit;
 elif [[ ! -d $G4SBS ]]; then
@@ -49,7 +49,7 @@ elif [[ ! -d $SBS_REPLAY ]]; then
     echo -e '\nERROR!! Please set "SBS_REPLAY" path properly in setenv.sh script!\n'; exit;
 fi
 
-# Validating the number of arguments provided
+# Sanity check 1: Validating the number of arguments provided
 if [[ "$#" -ne 6 ]]; then
     echo -e "\n--!--\n Illegal number of arguments!!"
     echo -e " This script expects 6 arguments: <preinit> <sbsconfig> <nevents> <fjobid> <njobs> <run_on_ifarm>\n"
@@ -79,6 +79,14 @@ else
     done
 fi
 
+# Sanity check 2: Finding matching G4SBS preinit macro for SIMC infile
+g4sbsmacro=$G4SBS'/scripts/'$preinit'.mac'
+if [[ ! -f $g4sbsmacro ]]; then
+    echo -e "\n!!!!!!!! ERROR !!!!!!!!!"
+    echo -e "G4SBS preinit macro, $g4sbsmacro, doesn't exist! Aborting!\n"
+    exit;
+fi
+
 # Create the output directory if necessary
 if [[ ! -d $outdirpath ]]; then
     { #try
@@ -105,8 +113,15 @@ elif [[ $sbsconfig == GMN11 ]]; then
     gemconfig=10
 elif [[ ($sbsconfig == GMN14) || ($sbsconfig == GMN8) || ($sbsconfig == GMN9) || ($sbsconfig == GEN2) || ($sbsconfig == GEN3) || ($sbsconfig == GEN4) ]]; then
     gemconfig=8
+    # GEP has only one SBS GEM config. However, each setting has a different DB file for digitization. To handle that without major change to the code we are using gemconfig flag.
+elif [[ $sbsconfig == GEP1 ]]; then
+    gemconfig=-1
+elif [[ $sbsconfig == GEP2 ]]; then
+    gemconfig=-2
+elif [[ $sbsconfig == GEP3 ]]; then
+    gemconfig=-3        
 else
-    echo -e "Enter valid SBS config! Valid options: GMN4,GMN7,GMN11,GMN14,GMN8,GMN9,GEN2,GEN3,GEN4"
+    echo -e "Enter valid SBS config! Valid options: GMN4,GMN7,GMN11,GMN14,GMN8,GMN9,GEN2,GEN3,GEN4,GEP1,GEP2,GEP3"
     exit;
 fi
 
@@ -146,7 +161,7 @@ do
     sbsdigjobname=$preinit'_digi_job_'$i
     sbsdiginfile=$outdirpath'/'$outfilebase'.root'
 
-    sbsdigscript=$SCRIPT_DIR'/run-sbsdig.sh'' '$txtfile' '$sbsdiginfile' '$gemconfig' '$run_on_ifarm' '$G4SBS' '$LIBSBSDIG' '$ANAVER' '$useJLABENV' '$JLABENV
+    sbsdigscript=$SCRIPT_DIR'/run-sbsdig.sh'' '$txtfile' '$sbsdiginfile' '$gemconfig' '$sbsconfig' '$run_on_ifarm' '$G4SBS' '$LIBSBSDIG' '$ANAVER' '$useJLABENV' '$JLABENV
     
     if [[ $run_on_ifarm -ne 1 ]]; then
 	swif2 add-job -workflow $workflowname -antecedent $g4sbsjobname -partition production -name $sbsdigjobname -cores 1 -disk 5GB -ram 1500MB $sbsdigscript

@@ -15,7 +15,7 @@ source setenv.sh
 g4sbsfilebase=$1
 # Directory at which g4sbs output files are existing which we want to digitize
 g4sbsfiledir=$2
-gemconfig=$3    # GEM config (Valid options: 8,10,12)
+sbsconfig=$3    # GEM config (Valid options: 8,10,12)
 fjobid=$4       # first job id
 njobs=$5        # total no. of jobs to submit 
 run_on_ifarm=$6 # 1=>Yes (If true, runs all jobs on ifarm)
@@ -61,6 +61,26 @@ else
     echo -e "\nRunning all jobs on ifarm!\n"
 fi
 
+#adjusting gemconfig
+gemconfig=0
+if [[ ($sbsconfig == GMN4) || ($sbsconfig == GMN7) ]]; then
+    gemconfig=12
+elif [[ $sbsconfig == GMN11 ]]; then
+    gemconfig=10
+elif [[ ($sbsconfig == GMN14) || ($sbsconfig == GMN8) || ($sbsconfig == GMN9) || ($sbsconfig == GEN2) || ($sbsconfig == GEN3) || ($sbsconfig == GEN4) ]]; then
+    gemconfig=8
+    # GEP has only one SBS GEM config. However, each setting has a different DB file for digitization. To handle that without major change to the code we are using gemconfig flag.
+elif [[ $sbsconfig == GEP1 ]]; then
+    gemconfig=-1
+elif [[ $sbsconfig == GEP2 ]]; then
+    gemconfig=-2
+elif [[ $sbsconfig == GEP3 ]]; then
+    gemconfig=-3        
+else
+    echo -e "Enter valid SBS config! Valid options: GMN4,GMN7,GMN11,GMN14,GMN8,GMN9,GEN2,GEN3,GEN4,GEP1,GEP2,GEP3"
+    exit;
+fi
+
 # creating jobs
 for ((i=$fjobid; i<$((fjobid+njobs)); i++))
 do
@@ -68,7 +88,7 @@ do
     sbsdigjobname=$g4sbsfilebase'_digi_job_'$i
     sbsdiginfile=$g4sbsfiledir'/'$g4sbsfilebase'_job_'$i'.root'
 
-    sbsdigscript=$SCRIPT_DIR'/run-sbsdig.sh'' '$txtfile' '$sbsdiginfile' '$gemconfig' '$run_on_ifarm' '$G4SBS' '$LIBSBSDIG' '$ANAVER' '$useJLABENV' '$JLABENV
+    sbsdigscript=$SCRIPT_DIR'/run-sbsdig.sh'' '$txtfile' '$sbsdiginfile' '$gemconfig' '$sbsconfig' '$run_on_ifarm' '$G4SBS' '$LIBSBSDIG' '$ANAVER' '$useJLABENV' '$JLABENV
 
     if [[ $run_on_ifarm -ne 1 ]]; then
 	swif2 add-job -workflow $workflowname -partition production -name $sbsdigjobname -cores 1 -disk 5GB -ram 1500MB $sbsdigscript
